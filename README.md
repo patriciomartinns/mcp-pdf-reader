@@ -83,6 +83,7 @@ Any STDIO-aware MCP client can reuse the snippet verbatim.
 | `read_pdf` | Extract ordered text for a bounded page range (max 25 pages per call). | `path`, `start_page=1`, `end_page=None`, `max_pages=25` |
 | `search_pdf` | Run semantic similarity over cached embeddings and return ranked hits. | `path`, `query`, `top_k=5`, `min_score=0.25`, `chunk_size=None`, `chunk_overlap=None` |
 | `describe_pdf_sections` | Generate deterministic chunks with offsets for downstream ingestion. | `path`, `max_chunks=20`, `chunk_size=None`, `chunk_overlap=None` |
+| `configure_pdf_defaults` | Update runtime defaults for pagination, chunking e modelo de embeddings. | `chunk_size=None`, `chunk_overlap=None`, `max_pages=None`, `embedding_model=None` |
 
 All tools enforce `.pdf` extensions, resolve relative paths against the configured base directory, and will throw permission errors if a file escapes that sandbox.
 
@@ -93,6 +94,18 @@ All tools enforce `.pdf` extensions, resolve relative paths against the configur
   ```text
   Tool: read_pdf
   Args: { "path": "docs/whitepaper.pdf", "start_page": 3, "end_page": 5 }
+  ```
+
+- **Configurar defaults em tempo de execução**
+
+  ```text
+  Tool: configure_pdf_defaults
+  Args: {
+    "chunk_size": 600,
+    "chunk_overlap": 150,
+    "max_pages": 10,
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2"
+  }
   ```
 
   Returns ordered pages plus the total page count so the agent can paginate follow-up calls.
@@ -132,6 +145,8 @@ All tools enforce `.pdf` extensions, resolve relative paths against the configur
     "chunk_overlap": 120
   }
   ```
+
+- Para definir novos defaults sem precisar repetir parâmetros em todas as chamadas, use `configure_pdf_defaults` (o servidor retorna o estado atual e aplica validações).
 
   ```text
   Tool: describe_pdf_sections

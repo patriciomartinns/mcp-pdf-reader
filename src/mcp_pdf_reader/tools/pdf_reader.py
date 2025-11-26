@@ -4,7 +4,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from ..schemas import PDFChunkResponse, PDFReadResponse, PDFSearchResponse
+from ..schemas import PDFChunkResponse, PDFConfigResponse, PDFReadResponse, PDFSearchResponse
 from ..services import pdf_reader as pdf_service
 
 
@@ -18,7 +18,7 @@ def register_pdf_tools(mcp: FastMCP[Any]) -> None:
         path: str,
         start_page: int = 1,
         end_page: int | None = None,
-        max_pages: int = pdf_service.DEFAULT_MAX_PAGES,
+        max_pages: int | None = None,
     ) -> PDFReadResponse:
         """Return ordered pages for quick inspection."""
 
@@ -75,6 +75,27 @@ def register_pdf_tools(mcp: FastMCP[Any]) -> None:
             chunk_overlap=chunk_overlap,
         )
     _ = describe_pdf_sections
+
+    @mcp.tool(
+        description=(
+            "Updates the default PDF processing parameters so subsequent calls inherit them."
+        )
+    )
+    def configure_pdf_defaults(
+        chunk_size: int | None = None,
+        chunk_overlap: int | None = None,
+        max_pages: int | None = None,
+        embedding_model: str | None = None,
+    ) -> PDFConfigResponse:
+        """Adjust runtime defaults for pagination, chunking, and embedding model."""
+
+        return pdf_service.configure_pdf_defaults(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            max_pages=max_pages,
+            embedding_model=embedding_model,
+        )
+    _ = configure_pdf_defaults
 
 
 __all__ = ["register_pdf_tools"]

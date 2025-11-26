@@ -39,6 +39,25 @@ def isolate_base_path(tmp_path: Path):
     pdf_tools.reset_base_path()
 
 
+@pytest.fixture(autouse=True)
+def reset_defaults():
+    pdf_tools.configure_pdf_defaults(
+        chunk_size=pdf_tools.DEFAULT_CHUNK_SIZE,
+        chunk_overlap=pdf_tools.DEFAULT_CHUNK_OVERLAP,
+        max_pages=pdf_tools.DEFAULT_MAX_PAGES,
+        embedding_model=pdf_tools.DEFAULT_MODEL_NAME,
+    )
+    pdf_tools.set_embedding_model(None)
+    yield
+    pdf_tools.configure_pdf_defaults(
+        chunk_size=pdf_tools.DEFAULT_CHUNK_SIZE,
+        chunk_overlap=pdf_tools.DEFAULT_CHUNK_OVERLAP,
+        max_pages=pdf_tools.DEFAULT_MAX_PAGES,
+        embedding_model=pdf_tools.DEFAULT_MODEL_NAME,
+    )
+    pdf_tools.set_embedding_model(None)
+
+
 @pytest.fixture()
 def sample_pdf(tmp_path: Path) -> Path:
     pdf_path = tmp_path / "sample.pdf"
@@ -119,4 +138,29 @@ def test_search_pdf_accepts_chunk_parameters(sample_pdf: Path) -> None:
     )
     pdf_tools.set_embedding_model(None)
     assert response.results
+
+
+def test_configure_pdf_defaults_updates_values() -> None:
+    response = pdf_tools.configure_pdf_defaults(
+        chunk_size=320,
+        chunk_overlap=80,
+        max_pages=5,
+        embedding_model=pdf_tools.DEFAULT_MODEL_NAME,
+    )
+    assert response.chunk_size == 320
+    assert response.chunk_overlap == 80
+    assert response.max_pages == 5
+    assert response.embedding_model == pdf_tools.DEFAULT_MODEL_NAME
+
+    second = pdf_tools.configure_pdf_defaults()
+    assert second.chunk_size == 320
+    assert second.chunk_overlap == 80
+
+
+def test_describe_pdf_sections_respects_runtime_defaults(sample_pdf: Path) -> None:
+    pdf_tools.configure_pdf_defaults(chunk_size=150, chunk_overlap=30)
+    result = pdf_tools.describe_pdf_sections(path=str(sample_pdf), max_chunks=2)
+    assert result.chunks
+    first_chunk = result.chunks[0]
+    assert first_chunk.end_char - first_chunk.start_char <= 150
 

@@ -57,9 +57,17 @@ class PDFChunkResponse(BaseModel):
     chunks: list[PDFChunkInfo]
 
 
+class PDFConfigResponse(BaseModel):
+    chunk_size: int = Field(..., ge=100)
+    chunk_overlap: int = Field(..., ge=0)
+    max_pages: int = Field(..., ge=1)
+    embedding_model: str
+
+
 __all__ = [
     "PDFChunkInfo",
     "PDFChunkResponse",
+    "PDFConfigResponse",
     "PDFPage",
     "PDFReadResponse",
     "PDFSearchHit",

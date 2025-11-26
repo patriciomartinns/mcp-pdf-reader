@@ -1,6 +1,7 @@
 from .pdf import (
     PDFChunkInfo,
     PDFChunkResponse,
+    PDFConfigResponse,
     PDFPage,
     PDFReadResponse,
     PDFSearchHit,
@@ -10,6 +11,7 @@ from .pdf import (
 __all__ = [
     "PDFChunkInfo",
     "PDFChunkResponse",
+    "PDFConfigResponse",
     "PDFPage",
     "PDFReadResponse",
     "PDFSearchHit",

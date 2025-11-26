@@ -12,6 +12,7 @@ import numpy as np
 from ..schemas import (
     PDFChunkInfo,
     PDFChunkResponse,
+    PDFConfigResponse,
     PDFPage,
     PDFReadResponse,
     PDFSearchHit,
@@ -27,6 +28,10 @@ _base_path: Path | None = _DEFAULT_BASE_PATH
 MAX_DOCUMENT_CACHE = 16
 MAX_INDEX_CACHE = 16
 
+_chunk_size_default = DEFAULT_CHUNK_SIZE
+_chunk_overlap_default = DEFAULT_CHUNK_OVERLAP
+_max_pages_default = DEFAULT_MAX_PAGES
+_model_name = DEFAULT_MODEL_NAME
 _model_lock = threading.Lock()
 _embedding_model: Any | None = None
 _cache_lock = threading.RLock()
@@ -104,11 +109,20 @@ def _normalize_chunk_params(
     chunk_size: int | None,
     chunk_overlap: int | None,
 ) -> tuple[int, int]:
-    size = chunk_size if chunk_size is not None else DEFAULT_CHUNK_SIZE
+    size = chunk_size if chunk_size is not None else _chunk_size_default
     size = max(100, size)
-    overlap = chunk_overlap if chunk_overlap is not None else DEFAULT_CHUNK_OVERLAP
+    overlap = chunk_overlap if chunk_overlap is not None else _chunk_overlap_default
     overlap = max(0, min(overlap, size // 2))
     return size, overlap
+
+
+def _build_config_response() -> PDFConfigResponse:
+    return PDFConfigResponse(
+        chunk_size=_chunk_size_default,
+        chunk_overlap=_chunk_overlap_default,
+        max_pages=_max_pages_default,
+        embedding_model=_model_name,
+    )
 
 
 def set_base_path(path: str | Path | None) -> None:
@@ -125,6 +139,43 @@ def reset_base_path() -> None:
     set_base_path(_DEFAULT_BASE_PATH)
 
 
+def configure_pdf_defaults(
+    *,
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
+    max_pages: int | None = None,
+    embedding_model: str | None = None,
+) -> PDFConfigResponse:
+    global _chunk_size_default, _chunk_overlap_default, _max_pages_default
+    global _model_name, _embedding_model
+    invalidate_index = False
+
+    if chunk_size is not None or chunk_overlap is not None:
+        new_size, new_overlap = _normalize_chunk_params(chunk_size, chunk_overlap)
+        if new_size != _chunk_size_default or new_overlap != _chunk_overlap_default:
+            _chunk_size_default = new_size
+            _chunk_overlap_default = new_overlap
+            invalidate_index = True
+
+    if max_pages is not None:
+        _max_pages_default = max(1, max_pages)
+
+    if embedding_model is not None:
+        model_name = embedding_model.strip()
+        if not model_name:
+            raise ValueError("embedding_model cannot be empty.")
+        with _model_lock:
+            if model_name != _model_name:
+                _model_name = model_name
+                _embedding_model = None
+                invalidate_index = True
+
+    if invalidate_index:
+        _clear_index_cache(bump_epoch=True)
+
+    return _build_config_response()
+
+
 def set_embedding_model(model: Any | None) -> None:
     global _embedding_model
     with _model_lock:
@@ -139,7 +190,7 @@ def get_embedding_model() -> Any:
     if _embedding_model is None:
         with _model_lock:
             if _embedding_model is None:
-                _embedding_model = _load_sentence_transformer(DEFAULT_MODEL_NAME)
+                _embedding_model = _load_sentence_transformer(_model_name)
     return _embedding_model
 
 
@@ -172,10 +223,11 @@ def read_pdf(
     path: str,
     start_page: int = 1,
     end_page: int | None = None,
-    max_pages: int = DEFAULT_MAX_PAGES,
+    max_pages: int | None = None,
 ) -> PDFReadResponse:
     pdf_path = resolve_pdf_path(path)
     start_page = max(1, start_page)
+    page_window = max_pages if max_pages is not None else _max_pages_default
 
     with cast(Any, fitz.open(pdf_path)) as doc:
         total_pages = int(doc.page_count)
@@ -185,7 +237,7 @@ def read_pdf(
         if start_page > last_page:
             raise ValueError("Invalid page range.")
 
-        allowed_last = min(last_page, start_page + max_pages - 1)
+        allowed_last = min(last_page, start_page + page_window - 1)
         pages: list[PDFPage] = []
         for idx in range(start_page - 1, allowed_last):
             page_text = cast(str, doc.load_page(idx).get_text("text"))
@@ -258,7 +310,7 @@ def describe_pdf_sections(
             start_char=chunk.start_char,
             end_char=chunk.end_char,
             text=chunk.text.strip(),
-            embedding_model=DEFAULT_MODEL_NAME,
+            embedding_model=_model_name,
         )
         for chunk in selected
     ]
@@ -371,6 +423,7 @@ __all__ = [
     "DEFAULT_MAX_PAGES",
     "DEFAULT_MODEL_NAME",
     "PDFChunk",
+    "configure_pdf_defaults",
     "describe_pdf_sections",
     "get_embedding_model",
     "read_pdf",
