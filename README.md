@@ -12,7 +12,7 @@ Expose local PDFs to LLM agents with deterministic chunking, semantic embeddings
 
 ### Requirements
 
-- Python ≥ **3.13** (enforced em `pyproject.toml`)
+- Python ≥ **3.13** (enforced in `pyproject.toml`)
 - [`uv`](https://github.com/astral-sh/uv) CLI to install and run via `uvx`
 - Access to the PDFs you want to expose (optionally confined to a base directory)
 
@@ -35,7 +35,7 @@ All MCP clients should execute the same `uvx` command. Below are ready-to-copy s
 ```json
 {
   "mcpServers": {
-    "mcp-pdf": {
+    "PdfReader": {
       "command": "uvx",
       "args": [
         "--from",
@@ -49,7 +49,7 @@ All MCP clients should execute the same `uvx` command. Below are ready-to-copy s
 }
 ```
 
-> Cursor espera um objeto `mcpServers` no topo; cada chave é um servidor. O exemplo acima usa `--quiet`, mas você pode trocar por `--help` ou remover totalmente.
+> Cursor expects an `mcpServers` object at the top level; each key is a server definition. The snippet above uses `--quiet`, but you can swap it for `--help` or drop the extra flag entirely.
 
 #### Claude Desktop / Claude Code
 
@@ -63,7 +63,7 @@ Use the same `uvx` invocation in your `mcp.json`:
 
 ```json
 {
-  "name": "mcp-pdf",
+  "name": "PdfReader",
   "command": "uvx",
   "args": [
     "--from",
@@ -83,7 +83,7 @@ Any STDIO-aware MCP client can reuse the snippet verbatim.
 | `read_pdf` | Extract ordered text for a bounded page range (max 25 pages per call). | `path`, `start_page=1`, `end_page=None`, `max_pages=25` |
 | `search_pdf` | Run semantic similarity over cached embeddings and return ranked hits. | `path`, `query`, `top_k=5`, `min_score=0.25`, `chunk_size=None`, `chunk_overlap=None` |
 | `describe_pdf_sections` | Generate deterministic chunks with offsets for downstream ingestion. | `path`, `max_chunks=20`, `chunk_size=None`, `chunk_overlap=None` |
-| `configure_pdf_defaults` | Update runtime defaults for pagination, chunking e modelo de embeddings. | `chunk_size=None`, `chunk_overlap=None`, `max_pages=None`, `embedding_model=None` |
+| `configure_pdf_defaults` | Update runtime defaults for pagination, chunking, and the embedding model. | `chunk_size=None`, `chunk_overlap=None`, `max_pages=None`, `embedding_model=None` |
 
 All tools enforce `.pdf` extensions, resolve relative paths against the configured base directory, and will throw permission errors if a file escapes that sandbox.
 
@@ -96,7 +96,9 @@ All tools enforce `.pdf` extensions, resolve relative paths against the configur
   Args: { "path": "docs/whitepaper.pdf", "start_page": 3, "end_page": 5 }
   ```
 
-- **Configurar defaults em tempo de execução**
+- Returns ordered pages plus the total page count so the agent can paginate follow-up calls.
+
+- **Configure runtime defaults**
 
   ```text
   Tool: configure_pdf_defaults
@@ -108,7 +110,7 @@ All tools enforce `.pdf` extensions, resolve relative paths against the configur
   }
   ```
 
-  Returns ordered pages plus the total page count so the agent can paginate follow-up calls.
+- Useful when you want subsequent calls to honor a different chunk window, overlap, or page cap without repeating parameters.
 
 - **Semantic search**
 
@@ -130,9 +132,9 @@ All tools enforce `.pdf` extensions, resolve relative paths against the configur
 
 ### Advanced Parameters (Cursor, VS Code, etc.)
 
-- Ao abrir o painel MCP do Cursor (⌘⇧C → *Servers* → `mcp-pdf`), edite o JSON de argumentos antes de executar a ferramenta.
-- Todos os parâmetros extras estão disponíveis mesmo sem suporte visual dedicado; basta incluir o campo no objeto enviado.
-- Exemplos úteis:
+- In Cursor, press ⌃⇧J (Ctrl+Shift+J) to open Settings → *Features* → *Model Context Protocol* and select the `PdfReader` server. From there, edit the JSON arguments before invoking each tool.
+- All optional parameters are available even without a dedicated UI; just add the field to the JSON payload.
+- Useful examples:
 
   ```text
   Tool: search_pdf
@@ -146,7 +148,7 @@ All tools enforce `.pdf` extensions, resolve relative paths against the configur
   }
   ```
 
-- Para definir novos defaults sem precisar repetir parâmetros em todas as chamadas, use `configure_pdf_defaults` (o servidor retorna o estado atual e aplica validações).
+- Use `configure_pdf_defaults` to set new defaults once per session instead of repeating the same arguments on every call. The server returns the current state and applies validation.
 
   ```text
   Tool: describe_pdf_sections
@@ -158,7 +160,7 @@ All tools enforce `.pdf` extensions, resolve relative paths against the configur
   }
   ```
 
-- Caso nenhum valor avançado seja informado, o servidor mantém os defaults seguros (750 caracteres por chunk e 75 de overlap).
+- If no advanced values are provided, the server sticks to the safe defaults (750 characters per chunk, 75 characters of overlap).
 
 ### Development
 
@@ -186,4 +188,4 @@ uv run pyright           # strict type checking (py314 target)
 
 ### Support
 
-Open an issue or discussion em [github.com/patriciomartinns/mcp-pdf-reader](https://github.com/patriciomartinns/mcp-pdf-reader) para dúvidas, roadmap ou bugs.
+Open an issue or discussion at [github.com/patriciomartinns/mcp-pdf-reader](https://github.com/patriciomartinns/mcp-pdf-reader) for questions, roadmap requests, or bug reports.
