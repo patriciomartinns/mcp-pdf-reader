@@ -33,6 +33,7 @@ uvx --from git+https://github.com/patriciomartinns/pdf-toolbox -- pdf-toolbox --
 
 - [CLI Reference](cli-reference.md) – commands, parameters, and examples.
 - [MCP Integration](mcp-integration.md) – snippets for popular clients.
+- [Advanced Options](advanced-options.md) – table-detection mode and other power-user tweaks.
 - [GitHub Repository](https://github.com/patriciomartinns/pdf-toolbox) – issues, releases, roadmap.
 
 ## Known Warnings (PyMuPDF / SWIG)

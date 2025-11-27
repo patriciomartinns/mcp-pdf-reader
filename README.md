@@ -16,7 +16,10 @@ Expose local PDFs to MCP-compatible agents or run the standalone `pdf-reader` CL
 
 - FastMCP/STDIO server ready for Cursor, VS Code, Claude, and other MCP clients.
 - Typer/Click/Rich CLI (`pdf-reader`) prints JSON for easy piping.
-- PyMuPDF extraction plus SentenceTransformers embeddings.
+- `read_pdf` – extracts ordered text with page-window controls for quick inspection.
+- `search_pdf` – runs semantic similarity search over cached embeddings with custom `top_k`, score threshold, and chunk parameters.
+- `describe_pdf_sections` – emits deterministic chunks for classic RAG flows or, with `--mode tables`, returns structured tables (bbox, headers, cells) detected straight from the pages.
+- `configure_pdf_defaults` – adjusts chunk size/overlap, page windows, and the default embedding model at runtime.
 - Strict `.pdf` validation, sandboxed base path, and aggressive caching.
 
 ## Documentation
@@ -24,6 +27,7 @@ Expose local PDFs to MCP-compatible agents or run the standalone `pdf-reader` CL
 - [Getting started](docs/getting-started.md)
 - [CLI reference](docs/cli-reference.md)
 - [MCP integration](docs/mcp-integration.md)
+- [Advanced options](docs/advanced-options.md)
 
 ## Quick install (uv)
 # Run the MCP server directly

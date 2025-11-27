@@ -61,5 +61,5 @@ uvx --from git+https://github.com/patriciomartinns/pdf-toolbox -- pdf-toolbox --
 > The first semantic call (`search_pdf`) loads the SentenceTransformers model and builds embeddings for the PDF. Expect a longer delay once per model/PDF combo; subsequent searches reuse the cache and return much faster (the CLI and MCP server share the same behavior).
 
 > [!NOTE]
-> When running the MCP server through official PyMuPDF wheels on macOS, you might see `DeprecationWarning: builtin type SwigPy* has no __module__ attribute`. This stems from upstream SWIG builds (see [pymupdf/PyMuPDF#3931](https://github.com/pymupdf/PyMuPDF/issues/3931)) and is safe to ignore. Our local server suppresses it, and future PyMuPDF releases linked against SWIG ≥ 4.4.0 will remove the warning entirely.
+> On certain macOS builds the underlying PDF backend can emit `DeprecationWarning: builtin type SwigPy* has no __module__ attribute`. The warning is benign, and the server suppresses it so clients receive clean logs.
 

@@ -23,7 +23,7 @@ uvx --from git+https://github.com/patriciomartinns/pdf-toolbox -- pdf-reader --h
 | --- | --- | --- |
 | `read-pdf` | Extract paginated text. | `path`, `--start-page`, `--end-page`, `--max-pages` |
 | `search-pdf` | Perform semantic search using embeddings. | `path`, `query`, `--top-k`, `--min-score`, `--chunk-size`, `--chunk-overlap` |
-| `describe-pdf-sections` | List deterministic chunks with offsets. | `path`, `--max-chunks`, `--chunk-size`, `--chunk-overlap` |
+| `describe-pdf-sections` | List deterministic chunks or detected tables. | `path`, `--max-chunks`, `--chunk-size`, `--chunk-overlap`, `--mode` |
 | `configure-pdf-defaults` | Update default parameters for future calls. | `--chunk-size`, `--chunk-overlap`, `--max-pages`, `--embedding-model` |
 
 ## Examples
@@ -46,6 +46,12 @@ pdf-reader search-pdf learning/manual.pdf "rate limiting" --top-k 8 --min-score 
 pdf-reader describe-pdf-sections ~/Reports/Q4.pdf --max-chunks 5 --chunk-size 600 --chunk-overlap 120
 ```
 
+### Detect tables
+
+```bash
+pdf-reader describe-pdf-sections ~/Reports/Q4.pdf --mode tables --max-chunks 3
+```
+
 ### Adjust defaults
 
 ```bash
@@ -62,5 +68,5 @@ pdf-reader configure-pdf-defaults --chunk-size 600 --chunk-overlap 100 --max-pag
 > The first `search-pdf` run on a new document can take longer because it downloads the SentenceTransformers model and builds the embedding index. Repeated calls reuse the cached model/index and become much faster.
 
 > [!NOTE]
-> When using the `pdf-reader` binary installed via `uv tool install`, PyMuPDF may emit `DeprecationWarning: builtin type SwigPy* has no __module__ attribute` on macOS. This comes from upstream SWIG builds (see [pymupdf/PyMuPDF#3931](https://github.com/pymupdf/PyMuPDF/issues/3931)) and is safe to ignore; Debian/Windows builds or our local server (which suppresses the warning) do not show it.
+> Depending on the PDF backend shipped with your platform, you might see `DeprecationWarning: builtin type SwigPy* has no __module__ attribute` on macOS. The warning is harmless and the CLI suppresses it where possible so logs stay clean.
 
