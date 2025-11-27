@@ -3,9 +3,10 @@ from __future__ import annotations
 import threading
 import warnings
 from collections import OrderedDict
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence, cast
+from typing import Any, Literal, Sequence, cast
 
 with warnings.catch_warnings():
     # Same upstream SWIG warning as documented in
@@ -28,6 +29,9 @@ from ..schemas import (
     PDFReadResponse,
     PDFSearchHit,
     PDFSearchResponse,
+    PDFTable,
+    PDFTableCell,
+    PDFTableRow,
 )
 
 DEFAULT_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
@@ -307,8 +311,24 @@ def describe_pdf_sections(
     max_chunks: int = 20,
     chunk_size: int | None = None,
     chunk_overlap: int | None = None,
+    mode: Literal["chunks", "tables"] = "chunks",
 ) -> PDFChunkResponse:
     pdf_path = resolve_pdf_path(path)
+    if mode not in {"chunks", "tables"}:
+        raise ValueError("mode must be 'chunks' or 'tables'.")
+
+    if mode == "tables":
+        tables = _build_tables(pdf_path)
+        selected_tables = tables[: max_chunks]
+        return PDFChunkResponse(
+            path=str(pdf_path),
+            chunk_count=0,
+            table_count=len(selected_tables),
+            chunks=[],
+            tables=selected_tables,
+            mode="tables",
+        )
+
     chunk_len, overlap = _normalize_chunk_params(chunk_size, chunk_overlap)
     doc = _get_document(pdf_path)
     chunks = _build_chunks(doc.pages, chunk_len, overlap, pdf_path.name)
@@ -326,7 +346,13 @@ def describe_pdf_sections(
         for chunk in selected
     ]
 
-    return PDFChunkResponse(path=str(pdf_path), chunk_count=len(chunk_infos), chunks=chunk_infos)
+    return PDFChunkResponse(
+        path=str(pdf_path),
+        chunk_count=len(chunk_infos),
+        table_count=0,
+        chunks=chunk_infos,
+        mode="chunks",
+    )
 
 
 def _get_document(path: Path) -> _DocumentPages:
@@ -426,6 +452,204 @@ def _build_chunks(
             start = end - chunk_overlap
 
     return chunks
+
+
+def _build_tables(path: Path) -> list[PDFTable]:
+    tables: list[PDFTable] = []
+    with cast(Any, fitz.open(path)) as doc:
+        for page_index in range(int(doc.page_count)):
+            page = doc.load_page(page_index)
+            finder = page.find_tables()
+            detected_attr = getattr(finder, "tables", None)
+            detected = list(detected_attr) if detected_attr is not None else []
+            if not detected:
+                try:
+                    detected = list(finder)
+                except TypeError:
+                    detected = []
+            if not detected:
+                continue
+            for table_index, table in enumerate(detected):
+                rows, row_total, col_total = _convert_table_rows(table)
+                header_names = _extract_header_names(table)
+                bbox = _rect_to_tuple(getattr(table, "bbox", None)) or (0.0, 0.0, 0.0, 0.0)
+                table_id = f"{path.stem}-p{page_index + 1}-t{table_index}"
+                tables.append(
+                    PDFTable(
+                        table_id=table_id,
+                        page_number=page_index + 1,
+                        bbox=bbox,
+                        headers=header_names,
+                        rows=rows,
+                        row_count=row_total,
+                        column_count=col_total,
+                    )
+                )
+    return tables
+
+
+def _ensure_row_matrix(raw: Any) -> list[list[Any]]:
+    if raw is None:
+        return []
+    if isinstance(raw, (list, tuple)):
+        seq_raw: Sequence[Any] = cast(Sequence[Any], raw)
+        return [_coerce_row_sequence(row) for row in seq_raw]
+    return [_coerce_row_sequence(raw)]
+
+
+def _coerce_row_sequence(row: Any) -> list[Any]:
+    if isinstance(row, (list, tuple)):
+        seq_row: Sequence[Any] = cast(Sequence[Any], row)
+        return list(seq_row)
+    if row is None:
+        return []
+    return [row]
+
+
+def _convert_table_rows(table: Any) -> tuple[list[PDFTableRow], int, int]:
+    extracted = table.extract()
+    raw_rows = _ensure_row_matrix(extracted)
+    row_total = int(getattr(table, "row_count", len(raw_rows)))
+    row_total = max(0, row_total)
+    column_total = int(
+        getattr(
+            table,
+            "col_count",
+            len(raw_rows[0]) if raw_rows else 0,
+        )
+    )
+    column_total = max(0, column_total)
+    cell_boxes = _build_cell_boxes(table, row_total, column_total)
+    normalized_rows = _normalize_row_text(raw_rows, row_total, column_total)
+
+    rows: list[PDFTableRow] = []
+    for row_idx in range(row_total):
+        row_cells: list[PDFTableCell] = []
+        if row_idx < len(normalized_rows):
+            text_row = normalized_rows[row_idx]
+        else:
+            text_row = [""] * column_total
+
+        if row_idx < len(cell_boxes):
+            box_row = cell_boxes[row_idx]
+        else:
+            box_row = [None] * column_total
+        for col_idx in range(column_total):
+            bbox = _rect_to_tuple(box_row[col_idx]) if col_idx < len(box_row) else None
+            text_value = text_row[col_idx] if col_idx < len(text_row) else ""
+            row_cells.append(
+                PDFTableCell(
+                    row=row_idx,
+                    column=col_idx,
+                    bbox=bbox,
+                    text=text_value,
+                )
+            )
+        rows.append(PDFTableRow(row=row_idx, cells=row_cells))
+    return rows, row_total, column_total
+
+
+def _build_cell_boxes(table: Any, row_count: int, column_count: int) -> list[list[Any | None]]:
+    rows: list[list[Any | None]] = [
+        [None for _ in range(column_count)] for _ in range(row_count)
+    ]
+    cells_attr = getattr(table, "cells", None)
+    if cells_attr is None:
+        return rows
+
+    if isinstance(cells_attr, (list, tuple)):
+        seq_cells: Sequence[Any | None] = cast(Sequence[Any | None], cells_attr)
+        cell_list: list[Any | None] = list(seq_cells)
+    elif isinstance(cells_attr, Iterable):
+        cell_list = list(cast(Iterable[Any | None], cells_attr))
+    else:
+        return rows
+    if not cell_list:
+        return rows
+
+    first: Any | None = cell_list[0] if cell_list else None
+    has_rect_attr = first is not None and hasattr(first, "x0")
+    tuple_candidate: tuple[Any, ...] = (
+        cast(tuple[Any, ...], first) if isinstance(first, tuple) else ()
+    )
+    is_rect_sequence = has_rect_attr or len(tuple_candidate) == 4
+    if not is_rect_sequence and isinstance(first, (list, tuple)):
+        for row_idx in range(row_count):
+            source = cell_list[row_idx] if row_idx < len(cell_list) else None
+            row_cells: list[Any | None]
+            if isinstance(source, (list, tuple)):
+                seq_source: Sequence[Any | None] = cast(Sequence[Any | None], source)
+                row_cells = list(seq_source)
+            elif source is None:
+                row_cells = []
+            else:
+                row_cells = [source]
+            for col_idx in range(column_count):
+                if col_idx < len(row_cells):
+                    rows[row_idx][col_idx] = row_cells[col_idx]
+        return rows
+
+    for row_idx in range(row_count):
+        start = row_idx * column_count
+        for col_idx in range(column_count):
+            flat_index = start + col_idx
+            if flat_index < len(cell_list):
+                rows[row_idx][col_idx] = cell_list[flat_index]
+    return rows
+
+
+def _normalize_row_text(
+    raw_rows: list[list[Any]],
+    row_count: int,
+    column_count: int,
+) -> list[list[str]]:
+    normalized: list[list[str]] = []
+    for row in raw_rows[:row_count]:
+        cell_values: list[Any] = list(row)
+        clean_values = [_clean_cell_text(value) for value in cell_values[:column_count]]
+        while len(clean_values) < column_count:
+            clean_values.append("")
+        normalized.append(clean_values)
+
+    while len(normalized) < row_count:
+        normalized.append([""] * column_count)
+    return normalized
+
+
+def _clean_cell_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _extract_header_names(table: Any) -> list[str]:
+    header = getattr(table, "header", None)
+    if not header:
+        return []
+    names = getattr(header, "names", None)
+    if not names:
+        return []
+    result: list[str] = []
+    for name in names:
+        if not name:
+            continue
+        stripped = str(name).strip()
+        if stripped:
+            result.append(stripped)
+    return result
+
+
+def _rect_to_tuple(rect: Any | None) -> tuple[float, float, float, float] | None:
+    if rect is None:
+        return None
+    try:
+        return (float(rect.x0), float(rect.y0), float(rect.x1), float(rect.y1))
+    except AttributeError:
+        try:
+            x0, y0, x1, y1 = rect
+            return (float(x0), float(y0), float(x1), float(y1))
+        except (TypeError, ValueError):
+            return None
 
 
 __all__ = [

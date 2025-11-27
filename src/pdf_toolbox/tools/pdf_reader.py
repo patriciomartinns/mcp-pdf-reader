@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastmcp import FastMCP
 
@@ -65,6 +65,7 @@ def register_pdf_tools(mcp: FastMCP[Any]) -> None:
         max_chunks: int = 20,
         chunk_size: int | None = None,
         chunk_overlap: int | None = None,
+        mode: Literal["chunks", "tables"] = "chunks",
     ) -> PDFChunkResponse:
         """Expose deterministic chunks for structured ingestion."""
 
@@ -73,6 +74,7 @@ def register_pdf_tools(mcp: FastMCP[Any]) -> None:
             max_chunks=max_chunks,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
+            mode=mode,
         )
     _ = describe_pdf_sections
 

@@ -74,6 +74,24 @@ def sample_pdf(tmp_path: Path) -> Path:
     return pdf_path
 
 
+@pytest.fixture()
+def table_pdf(tmp_path: Path) -> Path:
+    pdf_path = tmp_path / "table.pdf"
+    doc = cast(Any, fitz.open())  # type: ignore[call-arg]
+    page = doc.new_page()
+    table_rect = fitz.Rect(72, 72, 300, 200)
+    page.draw_rect(table_rect, color=(0, 0, 0), width=1)
+    page.draw_line(fitz.Point(72, 136), fitz.Point(300, 136), color=(0, 0, 0), width=1)
+    page.draw_line(fitz.Point(186, 72), fitz.Point(186, 200), color=(0, 0, 0), width=1)
+    page.insert_text((82, 92), "Quarter")
+    page.insert_text((200, 92), "Revenue")
+    page.insert_text((82, 158), "Q1")
+    page.insert_text((200, 158), "$10M")
+    doc.save(pdf_path)
+    doc.close()
+    return pdf_path
+
+
 def _create_pdf(tmp_path: Path, name: str, text: str | None) -> Path:
     pdf_path = tmp_path / name
     doc = cast(Any, fitz.open())  # type: ignore[call-arg]
@@ -185,6 +203,22 @@ def test_describe_pdf_sections_chunk_params_affect_output(tmp_path: Path) -> Non
     assert tight.chunk_count >= 2
     assert tight.chunk_count > wide.chunk_count
     assert tight.chunks[0].end_char - tight.chunks[0].start_char <= 120
+
+
+def test_describe_pdf_sections_table_mode(table_pdf: Path) -> None:
+    result = pdf_tools.describe_pdf_sections(
+        path=str(table_pdf),
+        max_chunks=3,
+        mode="tables",
+    )
+    assert result.mode == "tables"
+    assert result.table_count >= 1
+    assert result.tables
+    first_table = result.tables[0]
+    assert first_table.rows
+    first_row = first_table.rows[0]
+    assert first_row.cells
+    assert "Quarter" in first_row.cells[0].text or "Revenue" in first_row.cells[0].text
 
 
 def test_read_pdf_invalid_page_range_raises(sample_pdf: Path) -> None:

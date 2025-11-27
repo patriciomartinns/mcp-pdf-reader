@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
@@ -51,10 +53,53 @@ class PDFChunkInfo(BaseModel):
     )
 
 
+def _empty_cell_list() -> list["PDFTableCell"]:
+    return []
+
+
+def _empty_row_list() -> list["PDFTableRow"]:
+    return []
+
+
+def _empty_table_list() -> list["PDFTable"]:
+    return []
+
+
+class PDFTableCell(BaseModel):
+    row: int = Field(..., ge=0)
+    column: int = Field(..., ge=0)
+    bbox: tuple[float, float, float, float] | None = Field(
+        default=None,
+        description="Bounding box for the cell (x0, y0, x1, y1).",
+    )
+    text: str = ""
+
+
+class PDFTableRow(BaseModel):
+    row: int = Field(..., ge=0)
+    cells: list[PDFTableCell] = Field(default_factory=_empty_cell_list)
+
+
+class PDFTable(BaseModel):
+    table_id: str
+    page_number: int = Field(..., ge=1)
+    bbox: tuple[float, float, float, float] = Field(
+        ...,
+        description="Bounding box for the table (x0, y0, x1, y1).",
+    )
+    headers: list[str] = Field(default_factory=list)
+    rows: list[PDFTableRow] = Field(default_factory=_empty_row_list)
+    row_count: int = Field(..., ge=0)
+    column_count: int = Field(..., ge=0)
+
+
 class PDFChunkResponse(BaseModel):
     path: str
     chunk_count: int
     chunks: list[PDFChunkInfo]
+    tables: list[PDFTable] = Field(default_factory=_empty_table_list)
+    mode: Literal["chunks", "tables"] = "chunks"
+    table_count: int = Field(0, ge=0)
 
 
 class PDFConfigResponse(BaseModel):
@@ -72,5 +117,8 @@ __all__ = [
     "PDFReadResponse",
     "PDFSearchHit",
     "PDFSearchResponse",
+    "PDFTable",
+    "PDFTableCell",
+    "PDFTableRow",
 ]
 

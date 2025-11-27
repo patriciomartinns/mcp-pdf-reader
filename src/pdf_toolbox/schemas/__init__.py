@@ -6,6 +6,9 @@ from .pdf import (
     PDFReadResponse,
     PDFSearchHit,
     PDFSearchResponse,
+    PDFTable,
+    PDFTableCell,
+    PDFTableRow,
 )
 
 __all__ = [
@@ -16,5 +19,8 @@ __all__ = [
     "PDFReadResponse",
     "PDFSearchHit",
     "PDFSearchResponse",
+    "PDFTable",
+    "PDFTableCell",
+    "PDFTableRow",
 ]
 

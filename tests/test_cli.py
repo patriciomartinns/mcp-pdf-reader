@@ -7,7 +7,7 @@ import pytest
 from typer.testing import CliRunner
 
 from pdf_toolbox import cli
-from pdf_toolbox.schemas import PDFPage, PDFReadResponse
+from pdf_toolbox.schemas import PDFChunkResponse, PDFPage, PDFReadResponse
 
 runner = CliRunner()
 
@@ -114,4 +114,29 @@ def test_run_tool_cli_returns_exit_code(monkeypatch: Any) -> None:
     monkeypatch.setattr(cli.pdf_service, "read_pdf", fake_read_pdf)
     exit_code = cli.run_tool_cli(["read-pdf", "manual.pdf"])
     assert exit_code == 0
+
+
+def test_describe_pdf_sections_cli_passes_mode(monkeypatch: Any) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_describe(**kwargs: Any) -> PDFChunkResponse:
+        captured.update(kwargs)
+        return PDFChunkResponse(path="dummy.pdf", chunk_count=0, chunks=[], table_count=0)
+
+    monkeypatch.setattr(cli.pdf_service, "describe_pdf_sections", fake_describe)
+    result = runner.invoke(
+        cli.tool_app,
+        [
+            "describe-pdf-sections",
+            "manual.pdf",
+            "--mode",
+            "tables",
+            "--max-chunks",
+            "2",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["mode"] == "tables"
+    assert captured["max_chunks"] == 2
 

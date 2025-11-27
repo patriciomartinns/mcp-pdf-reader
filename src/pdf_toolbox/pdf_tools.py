@@ -8,6 +8,9 @@ from .schemas import (
     PDFReadResponse,
     PDFSearchHit,
     PDFSearchResponse,
+    PDFTable,
+    PDFTableCell,
+    PDFTableRow,
 )
 from .services.pdf_reader import (
     DEFAULT_CHUNK_OVERLAP,
@@ -37,6 +40,9 @@ __all__ = [
     "PDFReadResponse",
     "PDFSearchHit",
     "PDFSearchResponse",
+    "PDFTable",
+    "PDFTableCell",
+    "PDFTableRow",
     "configure_pdf_defaults",
     "describe_pdf_sections",
     "get_embedding_model",

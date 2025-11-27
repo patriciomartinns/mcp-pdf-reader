@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Literal, Sequence
 
 import typer
 from pydantic import BaseModel
@@ -160,6 +160,12 @@ def describe_pdf_sections_command(
         "--chunk-overlap",
         help="Chunk overlap override for this call.",
     ),
+    mode: Literal["chunks", "tables"] = typer.Option(
+        "chunks",
+        "--mode",
+        "-M",
+        help="Output mode: 'chunks' (default) or 'tables' for PyMuPDF table detection.",
+    ),
 ) -> None:
     """Produce deterministic chunks with offsets and metadata."""
 
@@ -170,6 +176,7 @@ def describe_pdf_sections_command(
             max_chunks=max_chunks,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
+            mode=mode,
         ),
     )
 
