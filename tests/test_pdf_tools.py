@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+import types
 from pathlib import Path
 from typing import Any, Sequence, cast
 
@@ -9,6 +11,7 @@ import numpy.typing as npt
 import pytest
 
 from mcp_pdf_reader import pdf_tools
+from mcp_pdf_reader.services import pdf_reader as pdf_service
 
 VectorArray = npt.NDArray[np.float32]
 
@@ -66,6 +69,17 @@ def sample_pdf(tmp_path: Path) -> Path:
     page1.insert_text((72, 72), "Machine learning insights and embeddings.")
     page2 = doc.new_page()
     page2.insert_text((72, 72), "Chunking text allows semantic PDF search.")
+    doc.save(pdf_path)
+    doc.close()
+    return pdf_path
+
+
+def _create_pdf(tmp_path: Path, name: str, text: str | None) -> Path:
+    pdf_path = tmp_path / name
+    doc = cast(Any, fitz.open())  # type: ignore[call-arg]
+    page = doc.new_page()
+    if text:
+        page.insert_text((72, 72), text)
     doc.save(pdf_path)
     doc.close()
     return pdf_path
@@ -163,4 +177,155 @@ def test_describe_pdf_sections_respects_runtime_defaults(sample_pdf: Path) -> No
     assert result.chunks
     first_chunk = result.chunks[0]
     assert first_chunk.end_char - first_chunk.start_char <= 150
+
+
+def test_read_pdf_invalid_page_range_raises(sample_pdf: Path) -> None:
+    with pytest.raises(ValueError, match="Invalid page range"):
+        pdf_tools.read_pdf(str(sample_pdf), start_page=5, end_page=1)
+
+
+def test_resolve_pdf_path_rejects_non_pdf(tmp_path: Path) -> None:
+    bad_file = tmp_path / "note.txt"
+    bad_file.write_text("hello")
+    with pytest.raises(ValueError, match="Only .pdf files"):
+        pdf_tools.resolve_pdf_path(str(bad_file))
+
+
+def test_resolve_pdf_path_permission_error(tmp_path: Path) -> None:
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    pdf_file = outside / "doc.pdf"
+    pdf_file.write_text("fake pdf")
+    pdf_tools.set_base_path(str(allowed))
+    try:
+        with pytest.raises(PermissionError):
+            pdf_tools.resolve_pdf_path(str(pdf_file))
+    finally:
+        pdf_tools.reset_base_path()
+
+
+def test_configure_pdf_defaults_rejects_empty_model() -> None:
+    with pytest.raises(ValueError, match="cannot be empty"):
+        pdf_tools.configure_pdf_defaults(embedding_model="  ")
+
+
+def test_get_embedding_model_loads_custom(monkeypatch: Any) -> None:
+    sentinel = object()
+
+    def fake_loader(model_name: str) -> object:
+        return (model_name, sentinel)
+
+    monkeypatch.setattr(pdf_service, "_load_sentence_transformer", fake_loader)  # pyright: ignore[reportPrivateUsage]
+    pdf_tools.configure_pdf_defaults(embedding_model="sentence-transformers/test-model")
+    model = pdf_tools.get_embedding_model()
+    assert model == ("sentence-transformers/test-model", sentinel)
+
+
+def test_load_sentence_transformer_invokes_sentence_transformers(monkeypatch: Any) -> None:
+    class DummyModel:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    dummy_module = types.SimpleNamespace(SentenceTransformer=DummyModel)
+    monkeypatch.setitem(sys.modules, "sentence_transformers", dummy_module)
+    pdf_tools.configure_pdf_defaults(embedding_model="custom-model")
+    pdf_tools.set_embedding_model(None)
+    model = pdf_tools.get_embedding_model()
+    assert isinstance(model, DummyModel)
+    assert model.name == "custom-model"
+
+
+def test_search_pdf_requires_non_empty_query(sample_pdf: Path) -> None:
+    with pytest.raises(ValueError, match="cannot be empty"):
+        pdf_tools.search_pdf(path=str(sample_pdf), query="   ")
+
+
+def test_search_pdf_returns_empty_for_blank_document(tmp_path: Path) -> None:
+    _create_pdf(tmp_path, "blank.pdf", text=None)
+    pdf_tools.set_base_path(tmp_path)
+    try:
+        response = pdf_tools.search_pdf(path="blank.pdf", query="anything")
+        assert response.results == []
+    finally:
+        pdf_tools.reset_base_path()
+
+
+def test_document_cache_eviction(monkeypatch: Any, tmp_path: Path) -> None:
+    pdf_service._DOCUMENT_CACHE.clear()  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(pdf_service, "MAX_DOCUMENT_CACHE", 1)
+    first = _create_pdf(tmp_path, "first.pdf", "first")
+    second = _create_pdf(tmp_path, "second.pdf", "second")
+    pdf_tools.describe_pdf_sections(str(first))
+    pdf_tools.describe_pdf_sections(str(second))
+    assert len(pdf_service._DOCUMENT_CACHE) == 1  # pyright: ignore[reportPrivateUsage]
+    cached_path = next(iter(pdf_service._DOCUMENT_CACHE.keys()))  # pyright: ignore[reportPrivateUsage]
+    assert cached_path.name == "second.pdf"
+
+
+def test_index_cache_eviction(monkeypatch: Any, tmp_path: Path) -> None:
+    pdf_service._INDEX_CACHE.clear()  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(pdf_service, "MAX_INDEX_CACHE", 1)
+    pdf_tools.set_embedding_model(_DeterministicModel())
+    first = _create_pdf(tmp_path, "first.pdf", "first text")
+    second = _create_pdf(tmp_path, "second.pdf", "second text")
+    pdf_tools.search_pdf(str(first), query="first", min_score=-1.0)
+    pdf_tools.search_pdf(str(second), query="second", min_score=-1.0)
+    assert len(pdf_service._INDEX_CACHE) == 1  # pyright: ignore[reportPrivateUsage]
+    cached_key = next(iter(pdf_service._INDEX_CACHE.keys()))  # pyright: ignore[reportPrivateUsage]
+    assert cached_key[0].name == "second.pdf"
+    pdf_tools.set_embedding_model(None)
+
+
+def test_describe_pdf_sections_skips_blank_pages(tmp_path: Path) -> None:
+    blank_pdf = _create_pdf(tmp_path, "blank.pdf", text=None)
+    result = pdf_tools.describe_pdf_sections(str(blank_pdf))
+    assert result.chunk_count == 0
+
+
+def test_build_chunks_overlap_behavior() -> None:
+    chunks = pdf_service._build_chunks(["A" * 220], 120, 40, "file")  # pyright: ignore[reportPrivateUsage]
+    assert len(chunks) >= 2
+    assert chunks[1].start_char == chunks[0].end_char - 40
+
+
+def test_resolve_pdf_path_handles_relative(tmp_path: Path) -> None:
+    pdf_tools.set_base_path(tmp_path)
+    pdf_path = _create_pdf(tmp_path, "relative.pdf", "relative")
+    resolved = pdf_tools.resolve_pdf_path("relative.pdf")
+    assert resolved == pdf_path.resolve()
+
+
+def test_resolve_pdf_path_missing_file(tmp_path: Path) -> None:
+    pdf_tools.set_base_path(tmp_path)
+    with pytest.raises(FileNotFoundError):
+        pdf_tools.resolve_pdf_path("missing.pdf")
+
+
+def test_set_base_path_accepts_none(tmp_path: Path) -> None:
+    pdf_tools.set_base_path(tmp_path)
+    pdf_tools.set_base_path(None)
+    assert pdf_service._base_path is None  # pyright: ignore[reportPrivateUsage]
+
+
+def test_search_pdf_respects_min_score(sample_pdf: Path) -> None:
+    pdf_tools.set_embedding_model(_DeterministicModel(bias=-0.5))
+    response = pdf_tools.search_pdf(
+        path=str(sample_pdf),
+        query="semantic chunking",
+        top_k=5,
+        min_score=0.99,
+    )
+    assert response.results == []
+    pdf_tools.set_embedding_model(None)
+
+
+def test_get_index_uses_cache(tmp_path: Path) -> None:
+    pdf_tools.set_embedding_model(_DeterministicModel())
+    pdf_path = _create_pdf(tmp_path, "cache.pdf", "cache coverage")
+    index_first = pdf_service._get_index(pdf_path, 120, 40)  # pyright: ignore[reportPrivateUsage]
+    index_second = pdf_service._get_index(pdf_path, 120, 40)  # pyright: ignore[reportPrivateUsage]
+    assert index_first is index_second
+    pdf_tools.set_embedding_model(None)
 

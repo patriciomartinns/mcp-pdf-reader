@@ -8,5 +8,10 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Test coverage
+.coverage
+
+# Others
 .serena/
 learning/
