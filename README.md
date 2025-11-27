@@ -21,7 +21,6 @@ Expose local PDFs to MCP-compatible agents or run the standalone `pdf-reader` CL
 
 ## Documentation
 
-- [Hosted docs (GitHub Pages)](https://patriciomartinns.github.io/pdf-toolbox/)
 - [Getting started](docs/getting-started.md)
 - [CLI reference](docs/cli-reference.md)
 - [MCP integration](docs/mcp-integration.md)
